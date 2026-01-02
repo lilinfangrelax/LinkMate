@@ -122,3 +122,5 @@ app.*.symbols
 host.exe
 app/host.exe
 app/linkmate.db
+
+extension*.zip
