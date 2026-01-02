@@ -1,100 +1,178 @@
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'database_helper.dart';
 
 void main() async {
-  // Native Messaging Host for LinkMate
-  // Protocol:
-  // 1. Length (4 bytes, unsigned integer, little-endian)
-  // 2. JSON Message (UTF-8 encoded string)
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const LinkMateApp());
+}
 
-  // Initialize logging
-  final logFile = File('host.log');
-  void log(String message) {
-    final timestamp = DateTime.now().toIso8601String();
-    logFile.writeAsStringSync('[$timestamp] $message\n', mode: FileMode.append);
-    stderr.writeln(message); // Still write to stderr for manual testing
-  }
+class LinkMateApp extends StatelessWidget {
+  const LinkMateApp({super.key});
 
-  log('LinkMate Native Host Started');
-
-  try {
-    await for (final message in _readMessages()) {
-      _handleMessage(message, log);
-    }
-  } catch (e, stackTrace) {
-    log('Error in main loop: $e');
-    log(stackTrace.toString());
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'LinkMate',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
+      home: const BrowsersPage(),
+    );
   }
 }
 
-/// Stream of parsed JSON messages from stdin
-Stream<Map<String, dynamic>> _readMessages() async* {
-  final stdinStream = stdin;
+class BrowsersPage extends StatefulWidget {
+  const BrowsersPage({super.key});
 
-  // We need to read raw bytes.
-  // Note: Dart's stdin is buffered and processed effectively as a stream of byte lists.
-  // Since we require exact byte counts for the header, we might need a buffer.
-  
-  // A simple buffer to hold incoming data
-  List<int> buffer = [];
-  
-  await for (final chunk in stdinStream) {
-    buffer.addAll(chunk);
+  @override
+  State<BrowsersPage> createState() => _BrowsersPageState();
+}
 
-    while (true) {
-      // Check if we have enough bytes for the header (4 bytes)
-      if (buffer.length < 4) {
-        break; // Wait for more data
-      }
+class _BrowsersPageState extends State<BrowsersPage> {
+  final DatabaseHelper _dbHelper = DatabaseHelper();
+  List<Map<String, dynamic>> _browsers = [];
+  Timer? _timer;
 
-      // Read length (Little Endian)
-      final lengthData = Uint8List.fromList(buffer.sublist(0, 4));
-      final length = lengthData.buffer.asByteData().getUint32(0, Endian.little);
+  @override
+  void initState() {
+    super.initState();
+    _refreshBrowsers();
+    // Auto-refresh every 2 seconds to see incoming syncs live
+    _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      _refreshBrowsers();
+    });
+  }
 
-      // Check if we have the full message
-      if (buffer.length < 4 + length) {
-        break; // Wait for more data
-      }
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
-      // Extract message bytes
-      final messageBytes = buffer.sublist(4, 4 + length);
-      
-      // Remove processed bytes from buffer
-      // Optimization: In a high-throughput scenario, using a circular buffer or similar structure is better.
-      // For now, sublist is sufficient for functionality.
-      buffer = buffer.sublist(4 + length);
+  Future<void> _refreshBrowsers() async {
+    final browsers = await _dbHelper.getBrowsers();
+    setState(() {
+      _browsers = browsers;
+    });
+  }
 
-      try {
-        final jsonString = utf8.decode(messageBytes);
-        final jsonMap = jsonDecode(jsonString);
-        yield jsonMap;
-      } catch (e) {
-        stderr.writeln("Failed to parse message: $e");
-      }
-    }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('LinkMate'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refreshBrowsers(),
+          ),
+        ],
+      ),
+      body: _browsers.isEmpty
+          ? const Center(child: Text('No browsers synced yet.'))
+          : ListView.builder(
+              itemCount: _browsers.length,
+              itemBuilder: (context, index) {
+                final browser = _browsers[index];
+                return BrowserCard(
+                  browser: browser,
+                  dbHelper: _dbHelper,
+                );
+              },
+            ),
+    );
   }
 }
 
-void _handleMessage(Map<String, dynamic> message, void Function(String) log) async {
-  final type = message['type'];
-  log("Received Message Type: $type");
-  
-  if (type == 'TABS_SYNC') {
-      try {
-        final browser = message['browser'] as String;
-        final accountId = message['accountId'] as String?;
-        final tabs = (message['data']?['tabs'] as List?) ?? [];
-        final groups = (message['data']?['groups'] as List?) ?? [];
-        
-        log("Syncing ${tabs.length} tabs from $browser...");
-        
-        await DatabaseHelper().syncTabs(browser, accountId, tabs, groups);
-        
-        log("Sync complete.");
-      } catch (e) {
-        log("Database Sync Error: $e");
-      }
+class BrowserCard extends StatefulWidget {
+  final Map<String, dynamic> browser;
+  final DatabaseHelper dbHelper;
+
+  const BrowserCard({super.key, required this.browser, required this.dbHelper});
+
+  @override
+  State<BrowserCard> createState() => _BrowserCardState();
+}
+
+class _BrowserCardState extends State<BrowserCard> {
+  List<Map<String, dynamic>> _tabs = [];
+  bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-load tabs if you want, or load on expand
+  }
+
+  Future<void> _loadTabs() async {
+    final browserId = widget.browser['id'] as int;
+    final tabs = await widget.dbHelper.getTabsForBrowser(browserId);
+    if (mounted) {
+      setState(() {
+        _tabs = tabs;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ExpansionTile(
+        initiallyExpanded: _expanded,
+        onExpansionChanged: (expanded) {
+          setState(() => _expanded = expanded);
+          if (expanded) {
+            _loadTabs();
+          }
+        },
+        title: Text(widget.browser['name'] ?? 'Unknown Browser'),
+        subtitle: Text('Last seen: ${DateTime.fromMillisecondsSinceEpoch(widget.browser['last_seen'])}'),
+        leading: Icon(
+          widget.browser['type'] == 'chrome'
+              ? Icons.web
+              : Icons.web_asset,
+          color: Colors.blueAccent,
+        ),
+        children: [
+          if (_tabs.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text("No tabs or loading..."),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _tabs.length,
+              itemBuilder: (context, index) {
+                final tab = _tabs[index];
+                return ListTile(
+                  leading: tab['favicon_url'] != null && (tab['favicon_url'] as String).isNotEmpty
+                      ? const Icon(Icons.circle, size: 12, color: Colors.grey) // Placeholder
+                      : const Icon(Icons.public, size: 20),
+                  title: Text(
+                    tab['title'] ?? 'No Title',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    tab['url'] ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    // Future: Send command to browser to focus this tab
+                  },
+                );
+              },
+            ),
+        ],
+      ),
+    );
   }
 }

@@ -139,4 +139,13 @@ class DatabaseHelper {
       await batch.commit(noResult: true);
     });
   }
+  Future<List<Map<String, dynamic>>> getBrowsers() async {
+    final db = await database;
+    return await db.query('browsers', orderBy: 'last_seen DESC');
+  }
+
+  Future<List<Map<String, dynamic>>> getTabsForBrowser(int browserId) async {
+    final db = await database;
+    return await db.query('tabs', where: 'browser_id = ?', whereArgs: [browserId]);
+  }
 }
