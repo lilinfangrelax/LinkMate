@@ -8,7 +8,7 @@ async function getAllTabsAndGroups() {
   try {
     // Fetch all tabs
     const tabs = await chrome.tabs.query({});
-    
+
     // Fetch all tab groups
     const groups = await chrome.tabGroups.query({});
 
@@ -33,8 +33,25 @@ async function getAllTabsAndGroups() {
       }
     };
 
-    // For prototype Step 1: Log to console
     console.log("LinkMate Sync Data:", JSON.stringify(payload, null, 2));
+
+    // Send to Native Host
+    try {
+      const port = chrome.runtime.connectNative('com.linkmate.host');
+      port.postMessage(payload);
+      port.onMessage.addListener((msg) => {
+        console.log("Received from host:", msg);
+      });
+      port.onDisconnect.addListener(() => {
+        if (chrome.runtime.lastError) {
+          console.log("Native Host Disconnected:", chrome.runtime.lastError.message);
+        } else {
+          console.log("Native Host Disconnected");
+        }
+      });
+    } catch (e) {
+      console.error("Failed to connect to native host:", e);
+    }
 
     return payload;
   } catch (error) {
@@ -81,8 +98,8 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 
 // Tab Group Updated
 if (chrome.tabGroups) {
-    chrome.tabGroups.onUpdated.addListener((group) => {
-        console.log("Group Updated:", group);
-        getAllTabsAndGroups();
-    });
+  chrome.tabGroups.onUpdated.addListener((group) => {
+    console.log("Group Updated:", group);
+    getAllTabsAndGroups();
+  });
 }
