@@ -1,16 +1,30 @@
 // LinkMate Background Service Worker
 
-// Constants
-const BROWSER_TYPE = "chrome";
+// Cross-browser compatibility
+const api = (typeof browser !== 'undefined') ? browser : chrome;
+
+// Determine browser type (simple heuristic)
+let BROWSER_TYPE = "chrome";
+if (typeof browser !== 'undefined') {
+  BROWSER_TYPE = "firefox";
+} else if (navigator.userAgent.indexOf("Edg") > -1) {
+  BROWSER_TYPE = "edge";
+}
 
 // Helper function to get all tabs and groups
 async function getAllTabsAndGroups() {
   try {
     // Fetch all tabs
-    const tabs = await chrome.tabs.query({});
+    // In Manifest V3 Chrome, this returns a promise.
+    // In Firefox (V2/V3), browser.tabs.query returns a promise.
+    // chrome.tabs.query in Firefox returns a callback, but 'api' alias handles it if we use 'browser' namespace in FF.
+    const tabs = await api.tabs.query({});
 
-    // Fetch all tab groups
-    const groups = await chrome.tabGroups.query({});
+    // Fetch all tab groups (Firefox might not support tabGroups yet)
+    let groups = [];
+    if (api.tabGroups) {
+      groups = await api.tabGroups.query({});
+    }
 
     // Construct the payload
     const payload = {
@@ -37,14 +51,14 @@ async function getAllTabsAndGroups() {
 
     // Send to Native Host
     try {
-      const port = chrome.runtime.connectNative('com.linkmate.host');
+      const port = api.runtime.connectNative('com.linkmate.host');
       port.postMessage(payload);
       port.onMessage.addListener((msg) => {
         console.log("Received from host:", msg);
       });
       port.onDisconnect.addListener(() => {
-        if (chrome.runtime.lastError) {
-          console.log("Native Host Disconnected:", chrome.runtime.lastError.message);
+        if (api.runtime.lastError) {
+          console.log("Native Host Disconnected:", api.runtime.lastError.message);
         } else {
           console.log("Native Host Disconnected");
         }
@@ -62,20 +76,19 @@ async function getAllTabsAndGroups() {
 // --- Event Listeners ---
 
 // On Extension Install/Update
-chrome.runtime.onInstalled.addListener(() => {
+api.runtime.onInstalled.addListener(() => {
   console.log("LinkMate Extension Installed");
   getAllTabsAndGroups();
 });
 
 // Tab Created
-chrome.tabs.onCreated.addListener((tab) => {
+api.tabs.onCreated.addListener((tab) => {
   console.log("Tab Created:", tab);
   getAllTabsAndGroups();
 });
 
 // Tab Updated (URL, Title, Status changes)
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // Only sync when loading is complete to avoid partial data
+api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
     console.log("Tab Updated:", tab);
     getAllTabsAndGroups();
@@ -83,22 +96,20 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 // Tab Removed (Closed)
-chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+api.tabs.onRemoved.addListener((tabId, removeInfo) => {
   console.log("Tab Removed:", tabId);
   getAllTabsAndGroups();
 });
 
 // Tab Activated (Switched)
-chrome.tabs.onActivated.addListener((activeInfo) => {
+api.tabs.onActivated.addListener((activeInfo) => {
   console.log("Tab Activated:", activeInfo);
-  // Optional: Send a specific 'TAB_SWITCHED' event
-  // For now, we just sync full state in logging
   getAllTabsAndGroups();
 });
 
 // Tab Group Updated
-if (chrome.tabGroups) {
-  chrome.tabGroups.onUpdated.addListener((group) => {
+if (api.tabGroups) {
+  api.tabGroups.onUpdated.addListener((group) => {
     console.log("Group Updated:", group);
     getAllTabsAndGroups();
   });
