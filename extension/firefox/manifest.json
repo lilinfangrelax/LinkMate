@@ -5,7 +5,8 @@
     "description": "Syncs browser tabs with LinkMate desktop app via Native Messaging.",
     "permissions": [
         "tabs",
-        "nativeMessaging"
+        "nativeMessaging",
+        "storage"
     ],
     "background": {
         "scripts": [

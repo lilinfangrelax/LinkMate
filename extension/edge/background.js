@@ -14,10 +14,33 @@ if (typeof browser !== 'undefined') {
 // Helper function to get all tabs and groups
 async function getAllTabsAndGroups() {
   try {
+    // Attempt to get profile info (Chrome/Edge)
+    let accountId = null;
+
+    // 1. Try to get logged in email
+    try {
+      if (api.identity && api.identity.getProfileUserInfo) {
+        const userInfo = await api.identity.getProfileUserInfo();
+        accountId = userInfo.email || null;
+      }
+    } catch (e) {
+      console.warn("Could not fetch profile info:", e);
+    }
+
+    // 2. Fallback to a persistent local profile ID if no email
+    if (!accountId) {
+      const storage = await api.storage.local.get(['localProfileId']);
+      if (storage.localProfileId) {
+        accountId = storage.localProfileId;
+      } else {
+        // Generate a random ID (e.g., Profile-1234)
+        const randomId = 'Profile-' + Math.floor(1000 + Math.random() * 9000);
+        await api.storage.local.set({ localProfileId: randomId });
+        accountId = randomId;
+      }
+    }
+
     // Fetch all tabs
-    // In Manifest V3 Chrome, this returns a promise.
-    // In Firefox (V2/V3), browser.tabs.query returns a promise.
-    // chrome.tabs.query in Firefox returns a callback, but 'api' alias handles it if we use 'browser' namespace in FF.
     const tabs = await api.tabs.query({});
 
     // Fetch all tab groups (Firefox might not support tabGroups yet)
@@ -30,6 +53,7 @@ async function getAllTabsAndGroups() {
     const payload = {
       type: "TABS_SYNC",
       browser: BROWSER_TYPE,
+      accountId: accountId,
       timestamp: Date.now(),
       data: {
         tabs: tabs.map(tab => ({
