@@ -84,7 +84,7 @@ class DatabaseHelper {
     return db;
   }
 
-  Future<void> syncTabs(String browserType, String? accountId, List<dynamic> tabs, List<dynamic> groups) async {
+  Future<void> syncTabs(String browserType, String? accountId, List<dynamic> tabs, List<dynamic> groups, {String? profileName}) async {
     final db = await database;
 
     await db.transaction((txn) async {
@@ -98,10 +98,15 @@ class DatabaseHelper {
       int browserId;
       if (browserList.isNotEmpty) {
         browserId = browserList.first['id'] as int;
-        // Update last_seen
+        
+        // Update name and timestamp
+        final updatedName = profileName ?? browserType;
         await txn.update(
           'browsers',
-          {'last_seen': DateTime.now().millisecondsSinceEpoch},
+          {
+            'name': updatedName,
+            'last_seen': DateTime.now().millisecondsSinceEpoch
+          },
           where: 'id = ?',
           whereArgs: [browserId],
         );
@@ -109,7 +114,7 @@ class DatabaseHelper {
         browserId = await txn.insert('browsers', {
           'type': browserType,
           'account_id': accountId ?? 'default',
-          'name': '$browserType ($accountId)',
+          'name': profileName ?? browserType,
           'last_seen': DateTime.now().millisecondsSinceEpoch,
         });
       }

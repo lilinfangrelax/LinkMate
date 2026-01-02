@@ -85,12 +85,13 @@ void _handleMessage(Map<String, dynamic> message, void Function(String) log) asy
       try {
         final browser = message['browser'] as String;
         final accountId = message['accountId'] as String?;
+        final profileName = message['profileName'] as String?;
         final tabs = (message['data']?['tabs'] as List?) ?? [];
         final groups = (message['data']?['groups'] as List?) ?? [];
         
-        log("Syncing ${tabs.length} tabs from $browser...");
+        log("Syncing ${tabs.length} tabs from $browser ($profileName)...");
         
-        await DatabaseHelper().syncTabs(browser, accountId, tabs, groups);
+        await DatabaseHelper().syncTabs(browser, accountId, tabs, groups, profileName: profileName);
         
         log("Sync complete.");
       } catch (e) {

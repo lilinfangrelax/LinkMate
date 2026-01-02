@@ -14,31 +14,17 @@ if (typeof browser !== 'undefined') {
 // Helper function to get all tabs and groups
 async function getAllTabsAndGroups() {
   try {
-    // Attempt to get profile info (Chrome/Edge)
-    let accountId = null;
+    const storage = await api.storage.local.get(['localProfileUuid', 'localProfileName']);
 
-    // 1. Try to get logged in email
-    try {
-      if (api.identity && api.identity.getProfileUserInfo) {
-        const userInfo = await api.identity.getProfileUserInfo();
-        accountId = userInfo.email || null;
-      }
-    } catch (e) {
-      console.warn("Could not fetch profile info:", e);
-    }
-
-    // 2. Fallback to a persistent local profile ID if no email
+    // 1. Stable accountId for history
+    let accountId = storage.localProfileUuid;
     if (!accountId) {
-      const storage = await api.storage.local.get(['localProfileId']);
-      if (storage.localProfileId) {
-        accountId = storage.localProfileId;
-      } else {
-        // Generate a random ID (e.g., Profile-1234)
-        const randomId = 'Profile-' + Math.floor(1000 + Math.random() * 9000);
-        await api.storage.local.set({ localProfileId: randomId });
-        accountId = randomId;
-      }
+      accountId = 'id-' + Math.random().toString(36).substr(2, 9);
+      await api.storage.local.set({ localProfileUuid: accountId });
     }
+
+    // 2. Changeable display name
+    let profileName = storage.localProfileName || BROWSER_TYPE;
 
     // Fetch all tabs
     const tabs = await api.tabs.query({});
@@ -54,6 +40,7 @@ async function getAllTabsAndGroups() {
       type: "TABS_SYNC",
       browser: BROWSER_TYPE,
       accountId: accountId,
+      profileName: profileName,
       timestamp: Date.now(),
       data: {
         tabs: tabs.map(tab => ({
@@ -138,3 +125,13 @@ if (api.tabGroups) {
     getAllTabsAndGroups();
   });
 }
+
+// Manual Sync Request (from Popup)
+api.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "TRIGGER_SYNC") {
+    getAllTabsAndGroups().then(payload => {
+      sendResponse({ status: "success", data: payload });
+    });
+    return true; // Keep channel open for async response
+  }
+});
