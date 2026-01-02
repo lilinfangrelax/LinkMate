@@ -3,8 +3,7 @@
     "description": "LinkMate Native Messaging Host",
     "path": "d:\\Dev\\Flutter\\LinkMate\\app\\host.exe",
     "type": "stdio",
-    "allowed_origins": [
-        "chrome-extension://iakdbplajafmdpacnkbojcndfkaagodl/",
-        "chrome-extension://ikmcaginfeknpfccagajapmdodoikjaf/"
+    "allowed_extensions": [
+        "linkmate@linkmate.com"
     ]
 }
