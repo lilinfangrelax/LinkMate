@@ -121,3 +121,4 @@ app.*.symbols
 # LinkMate
 host.exe
 app/host.exe
+app/linkmate.db

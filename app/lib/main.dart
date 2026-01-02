@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'database_helper.dart';
 
 void main() async {
   // Native Messaging Host for LinkMate
@@ -76,15 +77,24 @@ Stream<Map<String, dynamic>> _readMessages() async* {
   }
 }
 
-void _handleMessage(Map<String, dynamic> message, void Function(String) log) {
-  // For Step 2, we just log what we received.
-  
+void _handleMessage(Map<String, dynamic> message, void Function(String) log) async {
   final type = message['type'];
   log("Received Message Type: $type");
   
   if (type == 'TABS_SYNC') {
-      final browser = message['browser'];
-      final tabCount = (message['data']?['tabs'] as List?)?.length ?? 0;
-      log("Synced $tabCount tabs from $browser");
+      try {
+        final browser = message['browser'] as String;
+        final accountId = message['accountId'] as String?;
+        final tabs = (message['data']?['tabs'] as List?) ?? [];
+        final groups = (message['data']?['groups'] as List?) ?? [];
+        
+        log("Syncing ${tabs.length} tabs from $browser...");
+        
+        await DatabaseHelper().syncTabs(browser, accountId, tabs, groups);
+        
+        log("Sync complete.");
+      } catch (e) {
+        log("Database Sync Error: $e");
+      }
   }
 }
