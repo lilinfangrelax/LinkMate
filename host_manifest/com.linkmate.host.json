@@ -6,5 +6,8 @@
     "allowed_origins": [
         "chrome-extension://iakdbplajafmdpacnkbojcndfkaagodl/",
         "chrome-extension://ikmcaginfeknpfccagajapmdodoikjaf/"
+    ],
+    "allowed_extensions": [
+        "linkmate@linkmate.com"
     ]
 }

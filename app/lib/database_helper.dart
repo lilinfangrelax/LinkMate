@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     final dbPath = p.join(Directory.current.path, 'linkmate.db');
     
-    return await openDatabase(
+    final db = await openDatabase(
       dbPath,
       version: 1,
       onCreate: (db, version) async {
@@ -77,6 +77,11 @@ class DatabaseHelper {
         ''');
       },
     );
+
+    // Set busy timeout to 5 seconds to handle concurrent writes
+    await db.execute('PRAGMA busy_timeout = 5000');
+    
+    return db;
   }
 
   Future<void> syncTabs(String browserType, String? accountId, List<dynamic> tabs, List<dynamic> groups) async {
