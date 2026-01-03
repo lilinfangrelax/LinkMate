@@ -214,7 +214,11 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getAllTabs() async {
     final db = await database;
-    return await db.query('tabs');
+    return await db.rawQuery('''
+      SELECT t.*, b.name as browser_name
+      FROM tabs t
+      JOIN browsers b ON t.browser_id = b.id
+    ''');
   }
 
   Future<int> getTotalTabCount() async {

@@ -242,10 +242,30 @@ class LinksView extends StatelessWidget {
                     tab: tab,
                     dbHelper: dbHelper,
                   ),
-                  title: Text(
-                    tab['title'] ?? 'No Title',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          tab['title'] ?? 'No Title',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (tab['browser_name'] != null)
+                        Container(
+                          margin: const EdgeInsets.only(left: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.blueAccent.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.blueAccent.withOpacity(0.3), width: 0.5),
+                          ),
+                          child: Text(
+                            tab['browser_name'],
+                            style: const TextStyle(fontSize: 10, color: Colors.blueAccent),
+                          ),
+                        ),
+                    ],
                   ),
                   subtitle: Text(
                     tab['url'] ?? '',
