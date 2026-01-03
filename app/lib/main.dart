@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'database_helper.dart';
+import 'settings_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +42,8 @@ class _BrowsersPageState extends State<BrowsersPage> {
   int? _selectedBrowserId; // null means "All"
   int _totalTabCount = 0;
   Timer? _timer;
+  bool _showSettings = false;
+  final SettingsService _settingsService = SettingsService();
 
   @override
   void initState() {
@@ -102,23 +105,33 @@ class _BrowsersPageState extends State<BrowsersPage> {
               browsers: _browsers,
               totalCount: _totalTabCount,
               selectedId: _selectedBrowserId,
+              showSettings: _showSettings,
               onSelect: (id) {
                 setState(() {
                   _selectedBrowserId = id;
+                  _showSettings = false;
                 });
                 _refreshData();
+              },
+              onSettingsTap: () {
+                setState(() {
+                  _showSettings = true;
+                  _selectedBrowserId = null;
+                });
               },
             ),
           ),
           // Main Content
           Expanded(
-            child: LinksView(
-              tabs: _tabs,
-              dbHelper: _dbHelper,
-              title: _selectedBrowserId == null 
-                  ? 'All Links' 
-                  : _browsers.firstWhere((b) => b['id'] == _selectedBrowserId, orElse: () => {'name': 'Browser'})['name'],
-            ),
+            child: _showSettings 
+              ? SettingsPage(settingsService: _settingsService)
+              : LinksView(
+                  tabs: _tabs,
+                  dbHelper: _dbHelper,
+                  title: _selectedBrowserId == null 
+                      ? 'All Links' 
+                      : _browsers.firstWhere((b) => b['id'] == _selectedBrowserId, orElse: () => {'name': 'Browser'})['name'],
+                ),
           ),
         ],
       ),
@@ -130,14 +143,18 @@ class BrowserSidebar extends StatelessWidget {
   final List<Map<String, dynamic>> browsers;
   final int totalCount;
   final int? selectedId;
+  final bool showSettings;
   final Function(int?) onSelect;
+  final VoidCallback onSettingsTap;
 
   const BrowserSidebar({
     super.key, 
     required this.browsers, 
     required this.totalCount, 
     required this.selectedId, 
-    required this.onSelect
+    required this.showSettings,
+    required this.onSelect,
+    required this.onSettingsTap,
   });
 
   @override
@@ -174,8 +191,198 @@ class BrowserSidebar extends StatelessWidget {
             ),
             onTap: () => onSelect(browser['id']),
           );
-        }).toList(),
+        }),
+        const Spacer(),
+        const Divider(height: 1),
+        ListTile(
+          dense: true,
+          selected: showSettings,
+          leading: const Icon(Icons.settings, size: 20),
+          title: const Text('设置'),
+          onTap: onSettingsTap,
+        ),
       ],
+    );
+  }
+}
+
+class SettingsPage extends StatefulWidget {
+  final SettingsService settingsService;
+  const SettingsPage({super.key, required this.settingsService});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  final TextEditingController _chromeIdController = TextEditingController();
+  final TextEditingController _edgeIdController = TextEditingController();
+  final TextEditingController _firefoxIdController = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final chromeId = await widget.settingsService.getChromeId();
+    final edgeId = await widget.settingsService.getEdgeId();
+    final firefoxId = await widget.settingsService.getFirefoxId();
+    setState(() {
+      _chromeIdController.text = chromeId;
+      _edgeIdController.text = edgeId;
+      _firefoxIdController.text = firefoxId;
+      _loading = false;
+    });
+  }
+
+  Future<void> _handleRegister() async {
+    setState(() => _saving = true);
+    
+    // Save current IDs first
+    await widget.settingsService.setChromeId(_chromeIdController.text);
+    await widget.settingsService.setEdgeId(_edgeIdController.text);
+    await widget.settingsService.setFirefoxId(_firefoxIdController.text);
+    
+    final success = await widget.settingsService.registerHost();
+    
+    if (mounted) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? '注册成功！' : '注册失败，请检查日志'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '应用设置',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      '配置浏览器扩展 ID 以允许应用与浏览器通讯。',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
+                ),
+                ElevatedButton.icon(
+                  onPressed: _saving ? null : _handleRegister,
+                  icon: _saving 
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.save_outlined, size: 20),
+                  label: const Text('保存并应用'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(indent: 24, endIndent: 24),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildBrowserSection(
+                    title: 'Google Chrome',
+                    icon: 'assets/chrome_888896.png',
+                    controller: _chromeIdController,
+                    hint: '例如: iakdbplajafmdpacnkbojcndfkaagodl',
+                  ),
+                  const SizedBox(height: 16),
+                  _buildBrowserSection(
+                    title: 'Microsoft Edge',
+                    icon: 'assets/edge_888899.png',
+                    controller: _edgeIdController,
+                    hint: '例如: kbffpkbiighjnfefjgkjhnnhofajldbe',
+                  ),
+                  const SizedBox(height: 16),
+                  _buildBrowserSection(
+                    title: 'Mozilla Firefox',
+                    icon: 'assets/firefox_888902.png',
+                    controller: _firefoxIdController,
+                    hint: '例如: linkmate@linkmate.com',
+                  ),
+   
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBrowserSection({
+    required String title, 
+    required String icon, 
+    required TextEditingController controller,
+    required String hint,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Image.asset(icon, width: 24, height: 24, errorBuilder: (c, e, s) => const Icon(Icons.browser_updated, size: 24)),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: controller,
+            decoration: InputDecoration(
+              labelText: '扩展 ID / 标识符',
+              hintText: hint,
+              helperText: '在编辑完成后，点击下方的“应用设置”生效',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              filled: true,
+              fillColor: Colors.black.withOpacity(0.2),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
