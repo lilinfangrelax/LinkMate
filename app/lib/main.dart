@@ -122,8 +122,9 @@ class _BrowserCardState extends State<BrowserCard> {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ExpansionTile(
+        visualDensity: VisualDensity.compact,
         initiallyExpanded: _expanded,
         onExpansionChanged: (expanded) {
           setState(() => _expanded = expanded);
@@ -153,6 +154,8 @@ class _BrowserCardState extends State<BrowserCard> {
               itemBuilder: (context, index) {
                 final tab = _tabs[index];
                 return ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
                   leading: FaviconWidget(
                     tab: tab,
                     dbHelper: widget.dbHelper,
