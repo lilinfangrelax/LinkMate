@@ -50,42 +50,69 @@ class SettingsService {
       final edgeId = await getEdgeId();
       final firefoxId = await getFirefoxId();
       
-      // 1. Get current executable path
-      // In development, this might be the dart executable or the flutter tester.
-      // In production, it's the app.exe.
-      // Based on com.linkmate.host.json, path is "d:\\Dev\\Flutter\\LinkMate\\app\\host.exe"
-      // We should probably find where the current project is.
-      
-      // For this specific project, we know the structure.
-      // The manifest files are in LinkMate/host_manifest/
-      // The host executable is in LinkMate/app/host.exe (per manifest) 
-      // OR it might be this very app if it acts as host.
-      
-      String exePath = Platform.resolvedExecutable;
-      // If we are running in debug mode, resolvedExecutable might be dart.exe.
-      // Let's assume the user wants to register THIS app as the host if they are running a build,
-      // but for now we'll stick to the path in the root if we can find it.
-      
-      // Let's find the root directory by looking for 'host_manifest'
+      // Improved heuristic to find project root (directory containing host_manifest)
+      // Search up to 10 levels to handle deep build directories
       Directory current = Directory.current;
       String? rootPath;
       
-      // Simple heuristic to find project root
-      for (int i = 0; i < 5; i++) {
+      for (int i = 0; i < 10; i++) {
         if (await Directory(p.join(current.path, 'host_manifest')).exists()) {
           rootPath = current.path;
           break;
         }
+        if (current.path == current.parent.path) break; 
         current = current.parent;
+      }
+      
+      // Fallback: If rootPath still null, try using Platform.resolvedExecutable
+      if (rootPath == null) {
+        current = File(Platform.resolvedExecutable).parent;
+        for (int i = 0; i < 10; i++) {
+          if (await Directory(p.join(current.path, 'host_manifest')).exists()) {
+            rootPath = current.path;
+            break;
+          }
+          if (current.path == current.parent.path) break;
+          current = current.parent;
+        }
       }
       
       if (rootPath == null) {
         throw Exception("Could not find project root (host_manifest directory)");
       }
 
+      // 1. Determine host executable path (host.exe)
+      String exePath = '';
+      
+      // Possible locations for host.exe:
+      // A. root/app/host.exe (Source/Standard structure)
+      // B. root/host.exe (Alternate structure)
+      // C. current_dir/host.exe (Local debug)
+      // D. executable_dir/host.exe (Packaged distribution)
+      
+      final pathsToTry = [
+        p.join(rootPath, 'app', 'host.exe'),
+        p.join(rootPath, 'host.exe'),
+        p.join(Directory.current.path, 'host.exe'),
+        p.join(File(Platform.resolvedExecutable).parent.path, 'host.exe'),
+      ];
+
+      for (final path in pathsToTry) {
+        if (await File(path).exists()) {
+          exePath = path;
+          break;
+        }
+      }
+
+      if (exePath.isEmpty) {
+        throw Exception("Could not find host.exe in any of these locations:\n${pathsToTry.join('\n')}");
+      }
+
       final chromeManifestPath = p.join(rootPath, 'host_manifest', 'com.linkmate.host_chrome.json');
       final edgeManifestPath = p.join(rootPath, 'host_manifest', 'com.linkmate.host_edge.json');
       final firefoxManifestPath = p.join(rootPath, 'host_manifest', 'com.linkmate.host_firefox.json');
+      
+      debugPrint('Registering host with path: $exePath');
       
       // Update Manifests
       await _updateBrowserManifest(chromeManifestPath, exePath, chromeId);

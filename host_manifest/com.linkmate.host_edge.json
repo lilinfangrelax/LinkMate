@@ -1,7 +1,7 @@
 {
     "name": "com.linkmate.host",
     "description": "LinkMate Native Messaging Host",
-    "path": "D:\\Dev\\Flutter\\LinkMate\\app\\build\\windows\\x64\\runner\\Debug\\app.exe",
+    "path": "D:\\Dev\\Flutter\\LinkMate\\app\\host.exe",
     "type": "stdio",
     "allowed_origins": [
         "chrome-extension://kbffpkbiighjnfefjgkjhnnhofajldbe/"
