@@ -196,14 +196,31 @@ class DatabaseHelper {
     );
   }
 
-  Future<List<Map<String, dynamic>>> getBrowsers() async {
+  Future<List<Map<String, dynamic>>> getBrowsersWithTabCounts() async {
     final db = await database;
-    return await db.query('browsers', orderBy: 'last_seen DESC');
+    return await db.rawQuery('''
+      SELECT b.*, COUNT(t.id) as tab_count
+      FROM browsers b
+      LEFT JOIN tabs t ON b.id = t.browser_id
+      GROUP BY b.id
+      ORDER BY b.last_seen DESC
+    ''');
   }
 
   Future<List<Map<String, dynamic>>> getTabsForBrowser(int browserId) async {
     final db = await database;
     return await db.query('tabs', where: 'browser_id = ?', whereArgs: [browserId]);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllTabs() async {
+    final db = await database;
+    return await db.query('tabs');
+  }
+
+  Future<int> getTotalTabCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM tabs');
+    return (result.first['count'] as int?) ?? 0;
   }
 }
 

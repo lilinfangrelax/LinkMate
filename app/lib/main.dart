@@ -37,15 +37,17 @@ class BrowsersPage extends StatefulWidget {
 class _BrowsersPageState extends State<BrowsersPage> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   List<Map<String, dynamic>> _browsers = [];
+  List<Map<String, dynamic>> _tabs = [];
+  int? _selectedBrowserId; // null means "All"
+  int _totalTabCount = 0;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _refreshBrowsers();
-    // Auto-refresh every 2 seconds to see incoming syncs live
+    _refreshData();
     _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      _refreshBrowsers();
+      _refreshData();
     });
   }
 
@@ -55,65 +57,21 @@ class _BrowsersPageState extends State<BrowsersPage> {
     super.dispose();
   }
 
-  Future<void> _refreshBrowsers() async {
-    final browsers = await _dbHelper.getBrowsers();
-    setState(() {
-      _browsers = browsers;
-    });
-  }
+  Future<void> _refreshData() async {
+    final browsers = await _dbHelper.getBrowsersWithTabCounts();
+    final totalCount = await _dbHelper.getTotalTabCount();
+    
+    List<Map<String, dynamic>> tabs;
+    if (_selectedBrowserId == null) {
+      tabs = await _dbHelper.getAllTabs();
+    } else {
+      tabs = await _dbHelper.getTabsForBrowser(_selectedBrowserId!);
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('LinkMate'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => _refreshBrowsers(),
-          ),
-        ],
-      ),
-      body: _browsers.isEmpty
-           ? const Center(child: Text('No browsers synced yet.'))
-          : ListView.builder(
-              itemCount: _browsers.length,
-              itemBuilder: (context, index) {
-                final browser = _browsers[index];
-                return BrowserCard(
-                  browser: browser,
-                  dbHelper: _dbHelper,
-                );
-              },
-            ),
-    );
-  }
-}
-
-class BrowserCard extends StatefulWidget {
-  final Map<String, dynamic> browser;
-  final DatabaseHelper dbHelper;
-
-  const BrowserCard({super.key, required this.browser, required this.dbHelper});
-
-  @override
-  State<BrowserCard> createState() => _BrowserCardState();
-}
-
-class _BrowserCardState extends State<BrowserCard> {
-  List<Map<String, dynamic>> _tabs = [];
-  bool _expanded = false;
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  Future<void> _loadTabs() async {
-    final browserId = widget.browser['id'] as int;
-    final tabs = await widget.dbHelper.getTabsForBrowser(browserId);
     if (mounted) {
       setState(() {
+        _browsers = browsers;
+        _totalTabCount = totalCount;
         _tabs = tabs;
       });
     }
@@ -121,44 +79,168 @@ class _BrowserCardState extends State<BrowserCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ExpansionTile(
-        visualDensity: VisualDensity.compact,
-        initiallyExpanded: _expanded,
-        onExpansionChanged: (expanded) {
-          setState(() => _expanded = expanded);
-          if (expanded) {
-            _loadTabs();
-          }
-        },
-        title: Text(widget.browser['name'] ?? 'Unknown Browser'),
-        subtitle: Text('Last seen: ${DateTime.fromMillisecondsSinceEpoch(widget.browser['last_seen'])}'),
-        leading: Icon(
-          widget.browser['type'] == 'chrome'
-              ? Icons.web
-              : Icons.web_asset,
-          color: Colors.blueAccent,
-        ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('LinkMate'),
+        elevation: 1,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refreshData(),
+          ),
+        ],
+      ),
+      body: Row(
         children: [
-          if (_tabs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text("No tabs or loading..."),
-            )
-          else
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _tabs.length,
-              itemBuilder: (context, index) {
-                final tab = _tabs[index];
-                return ListTile(
+          // Sidebar
+          Container(
+            width: 280,
+            decoration: BoxDecoration(
+              border: Border(right: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
+            ),
+            child: BrowserSidebar(
+              browsers: _browsers,
+              totalCount: _totalTabCount,
+              selectedId: _selectedBrowserId,
+              onSelect: (id) {
+                setState(() {
+                  _selectedBrowserId = id;
+                });
+                _refreshData();
+              },
+            ),
+          ),
+          // Main Content
+          Expanded(
+            child: LinksView(
+              tabs: _tabs,
+              dbHelper: _dbHelper,
+              title: _selectedBrowserId == null 
+                  ? 'All Links' 
+                  : _browsers.firstWhere((b) => b['id'] == _selectedBrowserId, orElse: () => {'name': 'Browser'})['name'],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BrowserSidebar extends StatelessWidget {
+  final List<Map<String, dynamic>> browsers;
+  final int totalCount;
+  final int? selectedId;
+  final Function(int?) onSelect;
+
+  const BrowserSidebar({
+    super.key, 
+    required this.browsers, 
+    required this.totalCount, 
+    required this.selectedId, 
+    required this.onSelect
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            initiallyExpanded: true,
+            visualDensity: VisualDensity.compact,
+            title: const Text('📂 全部', style: TextStyle(fontWeight: FontWeight.bold)),
+            trailing: const SizedBox.shrink(), // Remove arrow
+            children: [
+              ListTile(
+                dense: true,
+                selected: selectedId == null,
+                title: const Text('所有链接'),
+                trailing: Text('$totalCount', style: const TextStyle(color: Colors.grey)),
+                onTap: () => onSelect(null),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        ...browsers.map((browser) {
+          final isSelected = selectedId == browser['id'];
+          return ListTile(
+            dense: true,
+            selected: isSelected,
+            leading: Icon(
+              browser['type'] == 'chrome' ? Icons.web : Icons.web_asset,
+              size: 20,
+              color: Colors.blueAccent,
+            ),
+            title: Text(
+              browser['name'] ?? 'Unknown Browser',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Text(
+              '${browser['tab_count']}',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            onTap: () => onSelect(browser['id']),
+          );
+        }).toList(),
+      ],
+    );
+  }
+}
+
+class LinksView extends StatelessWidget {
+  final List<Map<String, dynamic>> tabs;
+  final DatabaseHelper dbHelper;
+  final String title;
+
+  const LinksView({
+    super.key, 
+    required this.tabs, 
+    required this.dbHelper,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (tabs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.link_off, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text('No links found in $title', style: const TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: tabs.length,
+            itemBuilder: (context, index) {
+              final tab = tabs[index];
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: ListTile(
                   dense: true,
                   visualDensity: VisualDensity.compact,
                   leading: FaviconWidget(
                     tab: tab,
-                    dbHelper: widget.dbHelper,
+                    dbHelper: dbHelper,
                   ),
                   title: Text(
                     tab['title'] ?? 'No Title',
@@ -172,13 +254,14 @@ class _BrowserCardState extends State<BrowserCard> {
                     style: const TextStyle(fontSize: 12),
                   ),
                   onTap: () {
-                    // Future: Send command to browser to focus this tab
+                    // Action
                   },
-                );
-              },
-            ),
-        ],
-      ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
