@@ -102,6 +102,7 @@ class _BrowsersPageState extends State<BrowsersPage> {
               browsers: _browsers,
               totalCount: _totalTabCount,
               selectedId: _selectedBrowserId,
+              dbHelper: _dbHelper,
               onSelect: (id) {
                 setState(() {
                   _selectedBrowserId = id;
@@ -130,6 +131,7 @@ class BrowserSidebar extends StatelessWidget {
   final List<Map<String, dynamic>> browsers;
   final int totalCount;
   final int? selectedId;
+  final DatabaseHelper dbHelper;
   final Function(int?) onSelect;
 
   const BrowserSidebar({
@@ -137,6 +139,7 @@ class BrowserSidebar extends StatelessWidget {
     required this.browsers, 
     required this.totalCount, 
     required this.selectedId, 
+    required this.dbHelper,
     required this.onSelect
   });
 
@@ -160,7 +163,10 @@ class BrowserSidebar extends StatelessWidget {
           return ListTile(
             dense: true,
             selected: isSelected,
-            leading: BrowserIcon(type: browser['type'] ?? ''),
+            leading: BrowserIcon(
+              browser: browser,
+              dbHelper: dbHelper,
+            ),
             title: Text(
               browser['name'] ?? 'Unknown Browser',
               maxLines: 1,
@@ -178,11 +184,45 @@ class BrowserSidebar extends StatelessWidget {
   }
 }
 
-class BrowserIcon extends StatelessWidget {
-  final String type;
+class BrowserIcon extends StatefulWidget {
+  final Map<String, dynamic> browser;
+  final DatabaseHelper dbHelper;
   final double size;
 
-  const BrowserIcon({super.key, required this.type, this.size = 20});
+  const BrowserIcon({
+    super.key, 
+    required this.browser, 
+    required this.dbHelper, 
+    this.size = 20
+  });
+
+  @override
+  State<BrowserIcon> createState() => _BrowserIconState();
+}
+
+class _BrowserIconState extends State<BrowserIcon> {
+  Uint8List? _iconData;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _iconData = widget.browser['icon_data'] as Uint8List?;
+    if (_iconData == null) {
+      _loadIcon();
+    }
+  }
+
+  @override
+  void didUpdateWidget(BrowserIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.browser['id'] != oldWidget.browser['id'] || widget.browser['type'] != oldWidget.browser['type']) {
+      _iconData = widget.browser['icon_data'] as Uint8List?;
+      if (_iconData == null) {
+        _loadIcon();
+      }
+    }
+  }
 
   String _getLogoUrl(String type) {
     final t = type.toLowerCase();
@@ -204,27 +244,57 @@ class BrowserIcon extends StatelessWidget {
     return '';
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> _loadIcon() async {
+    final type = widget.browser['type'] as String?;
+    if (type == null) return;
+    
     final url = _getLogoUrl(type);
-    if (url.isEmpty) {
-      return Icon(Icons.web, size: size, color: Colors.blueAccent);
+    if (url.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        _loading = true;
+      });
     }
 
-    return Image.network(
-      url,
-      width: size,
-      height: size,
-      errorBuilder: (context, error, stackTrace) => Icon(Icons.web, size: size, color: Colors.blueAccent),
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return SizedBox(
-          width: size,
-          height: size,
-          child: const CircularProgressIndicator(strokeWidth: 2),
-        );
-      },
-    );
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200 && mounted) {
+        final data = response.bodyBytes;
+        setState(() {
+          _iconData = data;
+          _loading = false;
+        });
+        await widget.dbHelper.updateBrowserIcon(widget.browser['id'], data);
+      } else {
+        if (mounted) setState(() => _loading = false);
+      }
+    } catch (e) {
+      debugPrint('Error loading browser icon: $e');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_iconData != null) {
+      return Image.memory(
+        _iconData!,
+        width: widget.size,
+        height: widget.size,
+        errorBuilder: (context, error, stackTrace) => Icon(Icons.web, size: widget.size, color: Colors.blueAccent),
+      );
+    }
+
+    if (_loading) {
+      return SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: const CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    return Icon(Icons.web, size: widget.size, color: Colors.blueAccent);
   }
 }
 

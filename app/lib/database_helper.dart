@@ -40,7 +40,7 @@ class DatabaseHelper {
     
     final db = await openDatabase(
       dbPath,
-      version: 2, // Increment version
+      version: 3, // Increment version
       onCreate: (db, version) async {
         // Table: browsers
         await db.execute('''
@@ -49,7 +49,8 @@ class DatabaseHelper {
             type TEXT NOT NULL,
             account_id TEXT,
             name TEXT,
-            last_seen INTEGER
+            last_seen INTEGER,
+            icon_data BLOB
           )
         ''');
 
@@ -92,11 +93,17 @@ class DatabaseHelper {
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
-          // Check if column already exists to prevent crash (duplicate column name)
           var columns = await db.rawQuery('PRAGMA table_info(tabs)');
           bool columnExists = columns.any((column) => column['name'] == 'favicon_data');
           if (!columnExists) {
             await db.execute('ALTER TABLE tabs ADD COLUMN favicon_data BLOB');
+          }
+        }
+        if (oldVersion < 3) {
+          var columns = await db.rawQuery('PRAGMA table_info(browsers)');
+          bool columnExists = columns.any((column) => column['name'] == 'icon_data');
+          if (!columnExists) {
+            await db.execute('ALTER TABLE browsers ADD COLUMN icon_data BLOB');
           }
         }
       },
@@ -191,6 +198,16 @@ class DatabaseHelper {
     await db.update(
       'tabs',
       {'favicon_data': data},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> updateBrowserIcon(int id, Uint8List data) async {
+    final db = await database;
+    await db.update(
+      'browsers',
+      {'icon_data': data},
       where: 'id = ?',
       whereArgs: [id],
     );
