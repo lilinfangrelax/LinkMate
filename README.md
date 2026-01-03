@@ -23,3 +23,9 @@ Achieved communication between the browser extension and the desktop application
 - [ ] TAI intelligent features with custom key and baseURL (automatic group categorization suggestions, summary generation)
 
 ![alt text](image.png)
+
+### icon
+
+<img style="height:auto;" alt="" src="app/assets/chrome_888896.png" width="24" height="24"><img style="height:auto;" alt="" src="app/assets/edge_888899.png" width="24" height="24"><img style="height:auto;" alt="" src="app/assets/firefox_888902.png" width="24" height="24">
+
+<a href="https://www.freepik.com/icon/chrome_888896#fromView=family&page=1&position=0&uuid=c4355506-445c-470a-9e43-e86aeb5e77c4">Icon by Pixel perfect</a>
