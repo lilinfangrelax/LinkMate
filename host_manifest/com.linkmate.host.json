@@ -5,7 +5,7 @@
     "type": "stdio",
     "allowed_origins": [
         "chrome-extension://iakdbplajafmdpacnkbojcndfkaagodl/",
-        "chrome-extension://ikmcaginfeknpfccagajapmdodoikjaf/"
+        "chrome-extension://kbffpkbiighjnfefjgkjhnnhofajldbe/"
     ],
     "allowed_extensions": [
         "linkmate@linkmate.com"

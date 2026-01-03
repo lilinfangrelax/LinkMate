@@ -1,6 +1,6 @@
 {
     "manifest_version": 2,
-    "name": "LinkMate Core (Firefox)",
+    "name": "LinkMate Core",
     "version": "1.0",
     "description": "Syncs browser tabs with LinkMate desktop app via Native Messaging.",
     "permissions": [
@@ -20,7 +20,12 @@
     "browser_specific_settings": {
         "gecko": {
             "id": "linkmate@linkmate.com",
-            "strict_min_version": "50.0"
+            "strict_min_version": "58.0",
+            "data_collection_permissions": {
+                "required": [
+                    "none"
+                ]
+            }
         }
     },
     "icons": {

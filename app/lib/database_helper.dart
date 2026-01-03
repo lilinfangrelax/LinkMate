@@ -15,14 +15,26 @@ class DatabaseHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
+    return await _initDatabase();
   }
 
+  static bool _ffiInitialized = false;
+  static Future<Database>? _initFuture;
+
   Future<Database> _initDatabase() async {
-    // Initialize FFI
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    if (_initFuture != null) return _initFuture!;
+    
+    _initFuture = _doInitDatabase();
+    return _initFuture!;
+  }
+
+  Future<Database> _doInitDatabase() async {
+    // Initialize FFI only once
+    if (!_ffiInitialized) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      _ffiInitialized = true;
+    }
 
     final dbPath = p.join(Directory.current.path, 'linkmate.db');
     
@@ -80,7 +92,12 @@ class DatabaseHelper {
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
-          await db.execute('ALTER TABLE tabs ADD COLUMN favicon_data BLOB');
+          // Check if column already exists to prevent crash (duplicate column name)
+          var columns = await db.rawQuery('PRAGMA table_info(tabs)');
+          bool columnExists = columns.any((column) => column['name'] == 'favicon_data');
+          if (!columnExists) {
+            await db.execute('ALTER TABLE tabs ADD COLUMN favicon_data BLOB');
+          }
         }
       },
     );
@@ -88,6 +105,7 @@ class DatabaseHelper {
     // Set busy timeout to 5 seconds to handle concurrent writes
     await db.execute('PRAGMA busy_timeout = 5000');
     
+    _database = db;
     return db;
   }
 
