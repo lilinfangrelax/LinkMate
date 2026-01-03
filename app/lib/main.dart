@@ -145,23 +145,14 @@ class BrowserSidebar extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: ExpansionTile(
-            initiallyExpanded: true,
-            visualDensity: VisualDensity.compact,
-            title: const Text('📂 全部', style: TextStyle(fontWeight: FontWeight.bold)),
-            trailing: const SizedBox.shrink(), // Remove arrow
-            children: [
-              ListTile(
-                dense: true,
-                selected: selectedId == null,
-                title: const Text('所有链接'),
-                trailing: Text('$totalCount', style: const TextStyle(color: Colors.grey)),
-                onTap: () => onSelect(null),
-              ),
-            ],
-          ),
+        ListTile(
+          dense: true,
+          selected: selectedId == null,
+          visualDensity: VisualDensity.compact,
+          leading: const Icon(Icons.all_inclusive, size: 20, color: Colors.blueAccent),
+          title: const Text('全部', style: TextStyle(fontWeight: FontWeight.bold)),
+          trailing: Text('$totalCount', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          onTap: () => onSelect(null),
         ),
         const Divider(height: 1),
         ...browsers.map((browser) {
@@ -169,11 +160,7 @@ class BrowserSidebar extends StatelessWidget {
           return ListTile(
             dense: true,
             selected: isSelected,
-            leading: Icon(
-              browser['type'] == 'chrome' ? Icons.web : Icons.web_asset,
-              size: 20,
-              color: Colors.blueAccent,
-            ),
+            leading: BrowserIcon(type: browser['type'] ?? ''),
             title: Text(
               browser['name'] ?? 'Unknown Browser',
               maxLines: 1,
@@ -187,6 +174,56 @@ class BrowserSidebar extends StatelessWidget {
           );
         }).toList(),
       ],
+    );
+  }
+}
+
+class BrowserIcon extends StatelessWidget {
+  final String type;
+  final double size;
+
+  const BrowserIcon({super.key, required this.type, this.size = 20});
+
+  String _getLogoUrl(String type) {
+    final t = type.toLowerCase();
+    if (t.contains('chrome')) {
+      return 'https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_256x256.png';
+    } else if (t.contains('edge')) {
+      return 'https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_256x256.png';
+    } else if (t.contains('firefox')) {
+      return 'https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_256x256.png';
+    } else if (t.contains('safari')) {
+      return 'https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_256x256.png';
+    } else if (t.contains('opera')) {
+      return 'https://raw.githubusercontent.com/alrra/browser-logos/master/src/opera/opera_256x256.png';
+    } else if (t.contains('brave')) {
+      return 'https://raw.githubusercontent.com/alrra/browser-logos/master/src/brave/brave_256x256.png';
+    } else if (t.contains('vivaldi')) {
+      return 'https://raw.githubusercontent.com/alrra/browser-logos/master/src/vivaldi/vivaldi_256x256.png';
+    }
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _getLogoUrl(type);
+    if (url.isEmpty) {
+      return Icon(Icons.web, size: size, color: Colors.blueAccent);
+    }
+
+    return Image.network(
+      url,
+      width: size,
+      height: size,
+      errorBuilder: (context, error, stackTrace) => Icon(Icons.web, size: size, color: Colors.blueAccent),
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return SizedBox(
+          width: size,
+          height: size,
+          child: const CircularProgressIndicator(strokeWidth: 2),
+        );
+      },
     );
   }
 }
