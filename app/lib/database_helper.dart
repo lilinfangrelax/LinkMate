@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -27,7 +28,7 @@ class DatabaseHelper {
     
     final db = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2, // Increment version
       onCreate: (db, version) async {
         // Table: browsers
         await db.execute('''
@@ -49,6 +50,7 @@ class DatabaseHelper {
             title TEXT,
             url TEXT,
             favicon_url TEXT,
+            favicon_data BLOB,
             group_id INTEGER,
             FOREIGN KEY (browser_id) REFERENCES browsers (id) ON DELETE CASCADE
           )
@@ -75,6 +77,11 @@ class DatabaseHelper {
             last_access_time INTEGER
           )
         ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE tabs ADD COLUMN favicon_data BLOB');
+        }
       },
     );
 
@@ -119,8 +126,12 @@ class DatabaseHelper {
         });
       }
 
-      // 2. Clear existing data for this browser (Naive Sync)
-      // Note: In a real app, we might want to diff to preserve local stats if linked by specific ID
+      // 2. Diff Sync to preserve favicon_data
+      // Fetch existing tabs to keep favicon_data if URL hasn't changed
+      final existingTabs = await txn.query('tabs', where: 'browser_id = ?', columns: ['url', 'favicon_url', 'favicon_data'], whereArgs: [browserId]);
+      final faviconMap = {for (var t in existingTabs) t['url'] as String: t['favicon_data'] as Uint8List?};
+
+      // Clear existing data for this browser
       await txn.delete('tabs', where: 'browser_id = ?', whereArgs: [browserId]);
       await txn.delete('tab_groups', where: 'browser_id = ?', whereArgs: [browserId]);
 
@@ -137,18 +148,36 @@ class DatabaseHelper {
       // 4. Insert Tabs
       final batch = txn.batch();
       for (final tab in tabs) {
+        final url = tab['url'] as String;
+        final favIconUrl = tab['favIconUrl'] as String?;
+        
+        // Try to preserve existing data if it's the same URL
+        var faviconData = faviconMap[url];
+
         batch.insert('tabs', {
           'browser_id': browserId,
           'tab_id': tab['tabId'],
           'title': tab['title'],
-          'url': tab['url'],
-          'favicon_url': tab['favIconUrl'],
+          'url': url,
+          'favicon_url': favIconUrl,
+          'favicon_data': faviconData,
           'group_id': tab['groupId'],
         });
       }
       await batch.commit(noResult: true);
     });
   }
+
+  Future<void> updateTabFavicon(int id, Uint8List data) async {
+    final db = await database;
+    await db.update(
+      'tabs',
+      {'favicon_data': data},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getBrowsers() async {
     final db = await database;
     return await db.query('browsers', orderBy: 'last_seen DESC');
@@ -159,3 +188,4 @@ class DatabaseHelper {
     return await db.query('tabs', where: 'browser_id = ?', whereArgs: [browserId]);
   }
 }
+

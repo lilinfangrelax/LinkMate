@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'database_helper.dart';
 
 void main() async {
@@ -72,7 +75,7 @@ class _BrowsersPageState extends State<BrowsersPage> {
         ],
       ),
       body: _browsers.isEmpty
-          ? const Center(child: Text('No browsers synced yet.'))
+           ? const Center(child: Text('No browsers synced yet.'))
           : ListView.builder(
               itemCount: _browsers.length,
               itemBuilder: (context, index) {
@@ -104,7 +107,6 @@ class _BrowserCardState extends State<BrowserCard> {
   @override
   void initState() {
     super.initState();
-    // Pre-load tabs if you want, or load on expand
   }
 
   Future<void> _loadTabs() async {
@@ -151,9 +153,10 @@ class _BrowserCardState extends State<BrowserCard> {
               itemBuilder: (context, index) {
                 final tab = _tabs[index];
                 return ListTile(
-                  leading: tab['favicon_url'] != null && (tab['favicon_url'] as String).isNotEmpty
-                      ? const Icon(Icons.circle, size: 12, color: Colors.grey) // Placeholder
-                      : const Icon(Icons.public, size: 20),
+                  leading: FaviconWidget(
+                    tab: tab,
+                    dbHelper: widget.dbHelper,
+                  ),
                   title: Text(
                     tab['title'] ?? 'No Title',
                     maxLines: 1,
@@ -176,3 +179,109 @@ class _BrowserCardState extends State<BrowserCard> {
     );
   }
 }
+
+class FaviconWidget extends StatefulWidget {
+  final Map<String, dynamic> tab;
+  final DatabaseHelper dbHelper;
+
+  const FaviconWidget({super.key, required this.tab, required this.dbHelper});
+
+  @override
+  State<FaviconWidget> createState() => _FaviconWidgetState();
+}
+
+class _FaviconWidgetState extends State<FaviconWidget> {
+  Uint8List? _iconData;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _iconData = widget.tab['favicon_data'] as Uint8List?;
+    if (_iconData == null) {
+      _loadIcon();
+    }
+  }
+
+  @override
+  void didUpdateWidget(FaviconWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.tab['id'] != oldWidget.tab['id'] || widget.tab['favicon_url'] != oldWidget.tab['favicon_url']) {
+        _iconData = widget.tab['favicon_data'] as Uint8List?;
+        if (_iconData == null) {
+          _loadIcon();
+        }
+    }
+  }
+
+  Future<void> _loadIcon() async {
+    final url = widget.tab['favicon_url'] as String?;
+    if (url == null || url.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        _loading = true;
+      });
+    }
+
+    try {
+      Uint8List? data;
+      if (url.startsWith('data:image/')) {
+        // Handle Base64
+        final String base64Str = url.split(',').last;
+        data = base64Decode(base64Str);
+      } else if (url.startsWith('http')) {
+        // Handle URL
+        final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+        if (response.statusCode == 200) {
+          data = response.bodyBytes;
+        }
+      }
+
+      if (data != null && mounted) {
+        setState(() {
+          _iconData = data;
+          _loading = false;
+        });
+        // Save to database
+        await widget.dbHelper.updateTabFavicon(widget.tab['id'], data);
+      } else {
+         if (mounted) {
+          setState(() {
+            _loading = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading favicon: $e');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_iconData != null) {
+      return Image.memory(
+        _iconData!,
+        width: 20,
+        height: 20,
+        errorBuilder: (context, error, stackTrace) => const Icon(Icons.public, size: 20),
+      );
+    }
+
+    if (_loading) {
+      return const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    return const Icon(Icons.public, size: 20);
+  }
+}
+
